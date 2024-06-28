@@ -62,8 +62,6 @@ fn ui(f: &mut Frame, app: &App) {
     let canvas = Canvas::default()
         .block(Block::bordered().title("Game of Life"))
         .marker(symbols::Marker::Dot)
-        .x_bounds([0.0, app.field.size().0 as f64])
-        .y_bounds([0.0, app.field.size().1 as f64])
         .paint(|ctx| ctx.draw(&app.field));
     f.render_widget(canvas, f.size());
     f.set_cursor(
