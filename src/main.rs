@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use conway::{ConwayCell, Field};
 use ratatui::{
-    crossterm::event::{self, Event},
+    crossterm::event::{self, Event, MouseButton},
     prelude::*,
     widgets::{canvas::Canvas, Block},
     Frame,
@@ -32,14 +32,14 @@ fn run_app(terminal: &mut Tui, mut app: App) -> std::io::Result<()> {
         if !event::poll(Duration::from_millis(100))? {
             continue;
         }
-        if let Event::Key(key) = event::read()? {
-            match app.mode {
+        match event::read()? {
+            Event::Key(key) => match app.mode {
                 InputMode::Edit => match key.code {
                     event::KeyCode::Enter => app.start(),
-                    event::KeyCode::Left | event::KeyCode::Char('h') => app.move_cursor_left(),
-                    event::KeyCode::Right | event::KeyCode::Char('l') => app.move_cursor_right(),
-                    event::KeyCode::Up | event::KeyCode::Char('k') => app.move_cursor_up(),
-                    event::KeyCode::Down | event::KeyCode::Char('j') => app.move_cursor_down(),
+                    event::KeyCode::Char('h') | event::KeyCode::Left => app.move_cursor_left(),
+                    event::KeyCode::Char('l') | event::KeyCode::Right => app.move_cursor_right(),
+                    event::KeyCode::Char('k') | event::KeyCode::Up => app.move_cursor_up(),
+                    event::KeyCode::Char('j') | event::KeyCode::Down => app.move_cursor_down(),
                     event::KeyCode::Char(' ') => app.toggle(),
                     event::KeyCode::Esc => return Ok(()),
                     _ => {}
@@ -47,13 +47,30 @@ fn run_app(terminal: &mut Tui, mut app: App) -> std::io::Result<()> {
                 InputMode::Run => match key.code {
                     event::KeyCode::Esc => return Ok(()),
                     event::KeyCode::Enter => app.pause(),
-                    event::KeyCode::Left | event::KeyCode::Char('h') => app.move_cursor_left(),
-                    event::KeyCode::Right | event::KeyCode::Char('l') => app.move_cursor_right(),
-                    event::KeyCode::Up | event::KeyCode::Char('k') => app.move_cursor_up(),
-                    event::KeyCode::Down | event::KeyCode::Char('j') => app.move_cursor_down(),
+                    event::KeyCode::Char('h') | event::KeyCode::Left => app.move_cursor_left(),
+                    event::KeyCode::Char('l') | event::KeyCode::Right => app.move_cursor_right(),
+                    event::KeyCode::Char('k') | event::KeyCode::Up => app.move_cursor_up(),
+                    event::KeyCode::Char('j') | event::KeyCode::Down => app.move_cursor_down(),
                     _ => {}
                 },
-            }
+            },
+            Event::Mouse(mouse) => match app.mode {
+                InputMode::Edit => match mouse.kind {
+                    event::MouseEventKind::Down(button) if button == MouseButton::Left => {
+                        app.set_cursor(mouse.row, mouse.column);
+                        app.toggle_dragging_state();
+                        app.dragging_loc = app.cursor_loc;
+                        app.set_cell();
+                    }
+                    event::MouseEventKind::Drag(button) if button == MouseButton::Left => {
+                        app.set_cursor(mouse.row, mouse.column);
+                        app.set_cell();
+                    }
+                    _ => {}
+                },
+                _ => {}
+            },
+            _ => {}
         }
     }
 }
@@ -73,6 +90,8 @@ fn ui(f: &mut Frame, app: &App) {
 struct App {
     field: Field<ConwayCell>,
     cursor_loc: (usize, usize),
+    dragging_loc: (usize, usize),
+    dragging_state: bool,
     mode: InputMode,
 }
 
@@ -81,6 +100,8 @@ impl App {
         Self {
             field: Field::new(size),
             cursor_loc: (0, 0),
+            dragging_loc: (0, 0),
+            dragging_state: true,
             mode: InputMode::Edit,
         }
     }
@@ -117,6 +138,27 @@ impl App {
         if let InputMode::Run = self.mode {
             self.field.next_generation();
         }
+    }
+    fn set_cursor(&mut self, row: u16, column: u16) {
+        let (x_lim, y_lim) = self.field.size();
+        self.cursor_loc = (
+            (column as usize).saturating_sub(1).clamp(0, x_lim - 1),
+            (row as usize).saturating_sub(1).clamp(0, y_lim - 1),
+        );
+    }
+    fn toggle_dragging_state(&mut self) {
+        self.dragging_state = !self
+            .field
+            .get(self.cursor_loc)
+            .expect("Cursor is bounded")
+            .alive;
+    }
+    fn set_cell(&mut self) {
+        let cell = self
+            .field
+            .get_mut(self.cursor_loc)
+            .expect("Cursor is bounded");
+        cell.alive = self.dragging_state;
     }
 }
 
